@@ -72,7 +72,7 @@ namespace DynamicClassBuilder
 
             var dynProps = new List<PropertyInformation>();
 
-            foreach (var prop in props.Where(x => x.Name != "Activity"))
+            foreach (var prop in props)
             {
                 var dynProp = new PropertyInformation
                 {
@@ -141,11 +141,13 @@ namespace DynamicClassBuilder
             var attrs = property.GetCustomAttributes(true);
             foreach (var atr in attrs)
             {
-                PropertyAttributeInformation attribInfo = new PropertyAttributeInformation();
-                attribInfo.AttributeType = atr.GetType();
                 var caProperties = atr.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
-                Dictionary<string, object> caValues = caProperties.Where(nValue => nValue.Name != "TypeId").ToDictionary(nValue => nValue.Name, nValue => nValue.GetValue(atr, null));
-                attribInfo.AttributeValues = caValues;
+                var caValues = caProperties.Where(nValue => nValue.Name != "TypeId").ToDictionary(nValue => nValue.Name, nValue => nValue.GetValue(atr, null));
+                var attribInfo = new PropertyAttributeInformation
+                {
+                    AttributeType = atr.GetType(),
+                    AttributeValues = caValues
+                };
                 customAttributes.Add(attribInfo);
             }
             return customAttributes;
@@ -153,15 +155,15 @@ namespace DynamicClassBuilder
         /// <summary>
         /// Sets the property value.
         /// </summary>
-        /// <param name="Prop">The property.</param>
-        private void SetPropertyValue(PropertyInformation Prop)
+        /// <param name="property">The property.</param>
+        private void SetPropertyValue(PropertyInformation property)
         {
-            if (Prop == null) throw new ArgumentNullException(nameof(Prop));
-            PropertyInfo prop = mResult.GetType()
-                .GetProperty(Prop.PropertyName, BindingFlags.Public | BindingFlags.Instance);
+            if (property == null) throw new ArgumentNullException(nameof(property));
+            var prop = mResult.GetType()
+                .GetProperty(property.PropertyName, BindingFlags.Public | BindingFlags.Instance);
             if (null != prop && prop.CanWrite)
             {
-                prop.SetValue(mResult, Prop.PropertyValue, null);
+                prop.SetValue(mResult, property.PropertyValue, null);
             }
         }
 

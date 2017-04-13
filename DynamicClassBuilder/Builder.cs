@@ -60,6 +60,17 @@ namespace DynamicClassBuilder
         }
         #endregion public properties
         #region public Methods
+
+        public void AddProperty(PropertyInformation property)
+        {
+            if(Type!=null) throw new InvalidOperationException(Properties.Resources.CantUseCompiledType);
+            mClassProperties.Add(property);
+        }
+        public void AddProperty(PropertyInfo  property)
+        {
+            if (Type != null) throw new InvalidOperationException(Properties.Resources.CantUseCompiledType);
+            mClassProperties.Add(GetPropertyInfo(property));
+        }
         /// <summary>
         /// Gets the object properties.
         /// </summary>

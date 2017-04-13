@@ -64,11 +64,14 @@ namespace DynamicClassBuilder
         public void AddProperty(PropertyInformation property)
         {
             if(Type!=null) throw new InvalidOperationException(Properties.Resources.CantUseCompiledType);
+
+            if (mClassProperties.Any(x => x.PropertyName == property.PropertyName)) throw new InvalidOperationException(Properties.Resources.PropertyAllredyExists);
             mClassProperties.Add(property);
         }
         public void AddProperty(PropertyInfo  property)
         {
             if (Type != null) throw new InvalidOperationException(Properties.Resources.CantUseCompiledType);
+            if(mClassProperties.Any(x=>x.PropertyName==property.Name)) throw new InvalidOperationException(Properties.Resources.PropertyAllredyExists);
             mClassProperties.Add(GetPropertyInfo(property));
         }
         /// <summary>
@@ -112,12 +115,18 @@ namespace DynamicClassBuilder
             return mResult;
         }
 
-        public IList GetGenericList()
+        public IList GetGenericList(List<object> objects =null)
         {
             if (mType == null) mType = CompileResultType();
             var type = typeof (List<>).MakeGenericType(mType);
             var instance = Activator.CreateInstance(type);
-            return instance as IList;
+            var collection= instance as IList;
+            if (objects == null) return collection;
+            foreach (var obj in objects)
+            {
+                collection?.Add(obj);
+            }
+            return collection;
         }
         /// <summary>
         /// Gets the type public properties.

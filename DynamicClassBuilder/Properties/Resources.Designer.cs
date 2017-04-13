@@ -68,5 +68,14 @@ namespace DynamicClassBuilder.Properties {
                 return ResourceManager.GetString("CantUseCompiledType", resourceCulture);
             }
         }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Property with same name allredy exists in collection..
+        /// </summary>
+        internal static string PropertyAllredyExists {
+            get {
+                return ResourceManager.GetString("PropertyAllredyExists", resourceCulture);
+            }
+        }
     }
 }

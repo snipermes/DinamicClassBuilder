@@ -120,4 +120,7 @@
   <data name="CantUseCompiledType" xml:space="preserve">
     <value>Can not add property to compiled type. You can add properties only before GetResultObjectType/GetInstance</value>
   </data>
+  <data name="PropertyAllredyExists" xml:space="preserve">
+    <value>Property with same name allredy exists in collection.</value>
+  </data>
 </root>

@@ -13,6 +13,7 @@ namespace DynamicClassBuilder
         private List<PropertyInformation> mClassProperties = new List<PropertyInformation>();
         private Type mType;
         private readonly TypeBuilder mTypeBuilder;
+        private ModuleBuilder mModuleBuilder;
         private object mResult;
         #endregion private properties
         #region Constructor
@@ -34,11 +35,11 @@ namespace DynamicClassBuilder
         }
         public Builder(string classSignatureName, Type propertiesFromType) : this(classSignatureName)
         {
-            mClassProperties = GetTypePublicProperties(propertiesFromType);
+            mClassProperties = BuilderHelper.GetTypePublicProperties(propertiesFromType);
         }
         public Builder(string classSignatureName, object propertiesFromObject) : this(classSignatureName)
         {
-            mClassProperties = GetObjectProperties(propertiesFromObject);
+            mClassProperties = BuilderHelper.GetObjectProperties(propertiesFromObject);
         }
         #endregion Constructor
         #region public properties
@@ -63,42 +64,29 @@ namespace DynamicClassBuilder
 
         public void AddProperty(PropertyInformation property)
         {
-            if(Type!=null) throw new InvalidOperationException(Properties.Resources.CantUseCompiledType);
+           // if(Type!=null) throw new InvalidOperationException(Properties.Resources.CantUseCompiledType);
 
-            if (mClassProperties.Any(x => x.PropertyName == property.PropertyName)) throw new InvalidOperationException(Properties.Resources.PropertyAllredyExists);
-            mClassProperties.Add(property);
+            if (mClassProperties.Any(x => x.PropertyName == property.PropertyName))
+            {
+                //throw new InvalidOperationException(Properties.Resources.PropertyAllredyExists);
+                var prop = mClassProperties.FirstOrDefault(x => x.PropertyName == property.PropertyName && x.PropertyType==property.PropertyType );
+                if (prop == null) return;
+                prop.PropertyValue = property.PropertyValue;
+                prop.CustomAttributes = property.CustomAttributes;
+            }
+            else
+            {
+                mClassProperties.Add(property);
+            }
+            
         }
         public void AddProperty(PropertyInfo  property)
         {
             if (Type != null) throw new InvalidOperationException(Properties.Resources.CantUseCompiledType);
             if(mClassProperties.Any(x=>x.PropertyName==property.Name)) throw new InvalidOperationException(Properties.Resources.PropertyAllredyExists);
-            mClassProperties.Add(GetPropertyInfo(property));
+            mClassProperties.Add(BuilderHelper.GetPropertyInfo(property));
         }
-        /// <summary>
-        /// Gets the object properties.
-        /// </summary>
-        /// <param name="obj">The object.</param>
-        /// <returns></returns>
-        public List<PropertyInformation> GetObjectProperties(object obj)
-        {
-            var type = obj.GetType();
-            var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-
-            var dynProps = new List<PropertyInformation>();
-
-            foreach (var prop in props)
-            {
-                var dynProp = new PropertyInformation
-                {
-                    PropertyName = prop.Name,
-                    PropertyType = prop.PropertyType,
-                    PropertyValue = prop.GetValue(obj, null),
-                    CustomAttributes = GetCustomAttributes(prop)
-                };
-                dynProps.Add(dynProp);
-            }
-            return dynProps;
-        }
+ 
         public Type GetResultObjectType(List<PropertyInformation> classProperties)
         {
             return mType ?? (mType = CompileResultType());
@@ -107,12 +95,21 @@ namespace DynamicClassBuilder
         public object GetInstance(List<PropertyInformation> classProperties, bool setPropertyValue = true)
         {
             mClassProperties = classProperties;
+            if (mClassProperties == null || mClassProperties.Count == 0)
+            {
+                throw new ArgumentNullException(nameof(classProperties), @"нет свойств");
+            }
             if (mType == null) mType = CompileResultType();
             mResult = Activator.CreateInstance(mType);
             if (!setPropertyValue) return mResult;
             foreach (var prop in mClassProperties)
                 SetPropertyValue(prop);
             return mResult;
+        }
+
+        public object GetInstance(bool setPropertyValue = true)
+        {
+            return GetInstance(mClassProperties, setPropertyValue);
         }
 
         public IList GetGenericList(List<object> objects =null)
@@ -128,50 +125,11 @@ namespace DynamicClassBuilder
             }
             return collection;
         }
-        /// <summary>
-        /// Gets the type public properties.
-        /// </summary>
-        /// <param name="type">The type.</param>
-        /// <returns></returns>
-        public List<PropertyInformation> GetTypePublicProperties(Type type)
-        {
-            var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-            return props.Select(GetPropertyInfo).ToList();
-        }
-        public PropertyInformation GetPropertyInfo(PropertyInfo prop)
-        {
-            var dynProp = new PropertyInformation
-            {
-                PropertyName = prop.Name,
-                PropertyType = prop.PropertyType,
-                CustomAttributes = GetCustomAttributes(prop)
-            };
-            return dynProp;
-        }
+
+
         #endregion public Methods
         #region private methods
-        /// <summary>
-        /// Gets the custom attributes.
-        /// </summary>
-        /// <param name="property">The property.</param>
-        /// <returns></returns>
-        private List<PropertyAttributeInformation> GetCustomAttributes(PropertyInfo property)
-        {
-            var customAttributes = new List<PropertyAttributeInformation>();
-            var attrs = property.GetCustomAttributes(true);
-            foreach (var atr in attrs)
-            {
-                var caProperties = atr.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
-                var caValues = caProperties.Where(nValue => nValue.Name != "TypeId").ToDictionary(nValue => nValue.Name, nValue => nValue.GetValue(atr, null));
-                var attribInfo = new PropertyAttributeInformation
-                {
-                    AttributeType = atr.GetType(),
-                    AttributeValues = caValues
-                };
-                customAttributes.Add(attribInfo);
-            }
-            return customAttributes;
-        }
+
         /// <summary>
         /// Sets the property value.
         /// </summary>
@@ -194,7 +152,7 @@ namespace DynamicClassBuilder
         {
             foreach (var field in mClassProperties)
             {
-                CreateProperty(field);
+                CreateProperty(field,mTypeBuilder);
             }
         }
 
@@ -222,8 +180,8 @@ namespace DynamicClassBuilder
             //генерация динамической сборки только с возможностью запуска
             AssemblyBuilder assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(an,
                 AssemblyBuilderAccess.RunAndSave);
-            ModuleBuilder moduleBuilder = assemblyBuilder.DefineDynamicModule(typeSignature + ".MainModule", classSignatureName + ".dll", true);
-            TypeBuilder tb = moduleBuilder.DefineType(typeSignature,
+            mModuleBuilder = assemblyBuilder.DefineDynamicModule(typeSignature + ".MainModule", classSignatureName + ".dll", true);
+            TypeBuilder tb = mModuleBuilder.DefineType(typeSignature,
                 TypeAttributes.Public |
                 TypeAttributes.Class |
                 TypeAttributes.AutoClass |
@@ -247,36 +205,106 @@ namespace DynamicClassBuilder
         {
             Type caType = attr.AttributeType;
             Type[] types = new Type[attr.AttributeValues.Count];
-
-            PropertyInfo[] attrPropertyInfos = new PropertyInfo[attr.AttributeValues.Count];
+            var attrValues = attr.AttributeValues.Select(x => x.Value).ToArray();
             int i = 0;
+            ConstructorInfo con;
+            PropertyInfo[] attrPropertyInfos = new PropertyInfo[attr.AttributeValues.Count];
             foreach (var attrProp in attr.AttributeValues)
             {
 
-                types[i] = typeof(string);
-                attrPropertyInfos[i] = attr.AttributeType.GetProperty(attrProp.Key);
+                types[i] = attrProp.Value.GetType();
+                if (attr.AttributeType != null) attrPropertyInfos[i] = attr.AttributeType.GetProperty(attrProp.Key);
                 i++;
             }
-            ConstructorInfo con = caType.GetConstructor(types);
-            var attrValues = attr.AttributeValues.Select(x => x.Value).ToArray();
-            if (con != null)
+            if (caType == null)
             {
-                CustomAttributeBuilder stiAttrib = new CustomAttributeBuilder(con, new object[attr.AttributeValues.Count],
-                    attrPropertyInfos, attrValues);
+                return;
+                con = CreateOwnAttributeConstructor(attr);
+                CustomAttributeBuilder stiAttrib = new CustomAttributeBuilder(con, attrValues);
                 propertyBuilder.SetCustomAttribute(stiAttrib);
             }
+            else
+            {
+               
+                 con = caType.GetConstructor(types);
+                CustomAttributeBuilder stiAttrib = new CustomAttributeBuilder(con,attrValues);
+                propertyBuilder.SetCustomAttribute(stiAttrib);
+            }
+
+
+        }
+
+        private ConstructorInfo CreateOwnAttributeConstructor(PropertyAttributeInformation attr)
+        {
+            return null;
+            var typeSignature = attr.Name ;
+            //var an = new AssemblyName(typeSignature + ",Version=1.0.0.1");
+            ////генерация динамической сборки только с возможностью запуска
+            //AssemblyBuilder assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(an,
+            //    AssemblyBuilderAccess.RunAndSave);
+            //ModuleBuilder moduleBuilder = assemblyBuilder.DefineDynamicModule(typeSignature + ".MainModule", typeSignature + ".dll", true);
+            var moduleTypes = mModuleBuilder.GetTypes().ToList();
+            //todo проверить список типо на наличие уже сгенерированного
+            //todo и вообще сделать это на уровень выше и если тип уже есть то идти по стандартному пути получения конструктора
+            //todo а ещё лучше тут не конструктор получать а генерировать и задавать тип для PropertyAttributeInformation
+
+            if (moduleTypes.FirstOrDefault(x => x.Name == typeSignature) == null)
+            {
+            }
+            TypeBuilder tb = mModuleBuilder.DefineType(typeSignature,
+                TypeAttributes.Public |
+                TypeAttributes.Class |
+                TypeAttributes.AutoClass |
+                TypeAttributes.AnsiClass |
+                TypeAttributes.BeforeFieldInit |
+                TypeAttributes.AutoLayout,
+                null);
+            
+            tb.SetParent(typeof(Attribute));
+            
+                tb.DefineDefaultConstructor(MethodAttributes.Public | MethodAttributes.SpecialName |
+                                                      MethodAttributes.RTSpecialName);
+
+            foreach (var val in attr.AttributeValues)
+            {
+                var field = new PropertyInformation
+                {
+                    PropertyName = val.Key,
+                    PropertyValue = val.Value,
+                    PropertyType = val.Value.GetType()
+                };
+
+
+                CreateProperty(field, tb);
+            }
+            Type[] types = new Type[attr.AttributeValues.Count];
+            int i = 0;
+            foreach (var attrProp in attr.AttributeValues)
+            {
+                types[i] = attrProp.Value.GetType();
+                i++;
+            }
+            var constructor = tb.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, types);
+            ILGenerator myConstructorIL = constructor.GetILGenerator();
+            myConstructorIL.Emit(OpCodes.Ldarg_0);
+            myConstructorIL.Emit(OpCodes.Ldarg_1);
+            myConstructorIL.Emit(OpCodes.Stfld, attr.AttributeValues.FirstOrDefault().Key);
+            myConstructorIL.Emit(OpCodes.Ret);
+            return constructor as ConstructorInfo;
+
+
         }
 
         /// <summary>
         /// Creates the property.
         /// </summary>
         /// <param name="propertyInformation">The property information.</param>
-        private void CreateProperty(PropertyInformation propertyInformation)
+        private void CreateProperty(PropertyInformation propertyInformation, TypeBuilder typeBuilder)
         {
-            FieldBuilder fieldBuilder = mTypeBuilder.DefineField("_" + propertyInformation.PropertyName,
+            FieldBuilder fieldBuilder = typeBuilder.DefineField("_" + propertyInformation.PropertyName,
                 propertyInformation.PropertyType, FieldAttributes.Private);
 
-            PropertyBuilder propertyBuilder = mTypeBuilder.DefineProperty(propertyInformation.PropertyName,
+            PropertyBuilder propertyBuilder = typeBuilder.DefineProperty(propertyInformation.PropertyName,
                 PropertyAttributes.None, propertyInformation.PropertyType, null);
 
             //Добавление аттрибут к свойству

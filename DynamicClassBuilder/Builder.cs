@@ -35,11 +35,11 @@ namespace DynamicClassBuilder
         }
         public Builder(string classSignatureName, Type propertiesFromType) : this(classSignatureName)
         {
-            mClassProperties = BuilderHelper.GetTypePublicProperties(propertiesFromType);
+            mClassProperties = propertiesFromType.GetTypePublicProperties();
         }
         public Builder(string classSignatureName, object propertiesFromObject) : this(classSignatureName)
         {
-            mClassProperties = BuilderHelper.GetObjectProperties(propertiesFromObject);
+            mClassProperties = propertiesFromObject.GetObjectProperties();
         }
         #endregion Constructor
         #region public properties
@@ -84,7 +84,7 @@ namespace DynamicClassBuilder
         {
             if (Type != null) throw new InvalidOperationException(Properties.Resources.CantUseCompiledType);
             if(mClassProperties.Any(x=>x.PropertyName==property.Name)) throw new InvalidOperationException(Properties.Resources.PropertyAllredyExists);
-            mClassProperties.Add(BuilderHelper.GetPropertyInfo(property));
+            mClassProperties.Add(property.GetPropertyInfo());
         }
  
         public Type GetResultObjectType(List<PropertyInformation> classProperties)
@@ -125,7 +125,14 @@ namespace DynamicClassBuilder
             }
             return collection;
         }
-
+        public IList GetGenericList(Type type)
+        {
+            if (type == null) return null;
+            var t = typeof(List<>).MakeGenericType(type);
+            var instance = Activator.CreateInstance(t);
+            var collection = instance as IList;
+            return collection;
+        }
 
         #endregion public Methods
         #region private methods
@@ -218,7 +225,7 @@ namespace DynamicClassBuilder
             }
             if (caType == null)
             {
-                return;
+                //return;
                 con = CreateOwnAttributeConstructor(attr);
                 CustomAttributeBuilder stiAttrib = new CustomAttributeBuilder(con, attrValues);
                 propertyBuilder.SetCustomAttribute(stiAttrib);
@@ -236,7 +243,7 @@ namespace DynamicClassBuilder
 
         private ConstructorInfo CreateOwnAttributeConstructor(PropertyAttributeInformation attr)
         {
-            return null;
+            //return null;
             var typeSignature = attr.Name ;
             //var an = new AssemblyName(typeSignature + ",Version=1.0.0.1");
             ////генерация динамической сборки только с возможностью запуска

@@ -21,7 +21,7 @@ namespace DynamicClassBuilder
         /// Initializes a new instance of the <see cref="Builder"/> class.
         /// </summary>
         /// <param name="classSignatureName">Name of the class signature.</param>
-        public Builder(string classSignatureName)
+        public Builder(string classSignatureName )
         {
             mTypeBuilder = GetTypeBuilder(classSignatureName);
 
@@ -64,11 +64,9 @@ namespace DynamicClassBuilder
 
         public void AddProperty(PropertyInformation property)
         {
-           // if(Type!=null) throw new InvalidOperationException(Properties.Resources.CantUseCompiledType);
 
             if (mClassProperties.Any(x => x.PropertyName == property.PropertyName))
             {
-                //throw new InvalidOperationException(Properties.Resources.PropertyAllredyExists);
                 var prop = mClassProperties.FirstOrDefault(x => x.PropertyName == property.PropertyName && x.PropertyType==property.PropertyType );
                 if (prop == null) return;
                 prop.PropertyValue = property.PropertyValue;
@@ -80,6 +78,51 @@ namespace DynamicClassBuilder
             }
             
         }
+
+        public void InheritFromAttribute()
+        {
+
+            Type caType = typeof (AttributeUsageAttribute);
+            Type[] types = new Type[1];
+            types[0] = typeof (AttributeTargets);
+            var attrValues = new[] {AttributeTargets.Property as object};
+            int i = 0;
+            ConstructorInfo con;
+            con = caType.GetConstructor(types);
+            CustomAttributeBuilder stiAttrib = new CustomAttributeBuilder(con, attrValues);
+            mTypeBuilder.SetCustomAttribute(stiAttrib);
+            mTypeBuilder.SetParent(typeof (Attribute));
+
+            var conTypes = mClassProperties.Select(x => x.PropertyType).ToArray();
+            var conBuilder = mTypeBuilder.DefineConstructor(
+                MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+                CallingConventions.Standard, conTypes);
+            for (i = 0; i < mClassProperties.Count; i++)
+            {
+                conBuilder.DefineParameter(i + 1, ParameterAttributes.In, mClassProperties[i].PropertyName);
+
+            }
+            ILGenerator myConstructorIL = conBuilder.GetILGenerator();
+
+
+            for (i = 0; i < mClassProperties.Count; i++)
+            {
+                FieldBuilder fb1 = mTypeBuilder.DefineField("_" + mClassProperties[i].PropertyName,
+                    mClassProperties[i].PropertyType, FieldAttributes.Private);
+                PropertyBuilder pb1 = mTypeBuilder.DefineProperty(mClassProperties[i].PropertyName,
+                    PropertyAttributes.None, mClassProperties[i].PropertyType, null);
+                pb1.SetGetMethod(MakeGetMethod(fb1, mClassProperties[i]));
+                pb1.SetSetMethod(MakeSetMethod(fb1, mClassProperties[i]));
+
+
+                myConstructorIL.Emit(OpCodes.Ldarg_0);
+                myConstructorIL.Emit(OpCodes.Ldarg_S, i + 1);
+                myConstructorIL.Emit(OpCodes.Stfld, fb1);
+            }
+            myConstructorIL.Emit(OpCodes.Ret);
+
+        }
+
         public void AddProperty(PropertyInfo  property)
         {
             if (Type != null) throw new InvalidOperationException(Properties.Resources.CantUseCompiledType);
@@ -87,7 +130,7 @@ namespace DynamicClassBuilder
             mClassProperties.Add(property.GetPropertyInfo());
         }
  
-        public Type GetResultObjectType(List<PropertyInformation> classProperties)
+        public Type GetResultObjectType()
         {
             return mType ?? (mType = CompileResultType());
         }
@@ -97,7 +140,7 @@ namespace DynamicClassBuilder
             mClassProperties = classProperties;
             if (mClassProperties == null || mClassProperties.Count == 0)
             {
-                throw new ArgumentNullException(nameof(classProperties), @"нет свойств");
+                throw new ArgumentNullException("classProperties", @"нет свойств");
             }
             if (mType == null) mType = CompileResultType();
             mResult = Activator.CreateInstance(mType);
@@ -121,7 +164,7 @@ namespace DynamicClassBuilder
             if (objects == null) return collection;
             foreach (var obj in objects)
             {
-                collection?.Add(obj);
+                if (collection != null) collection.Add(obj);
             }
             return collection;
         }
@@ -143,7 +186,7 @@ namespace DynamicClassBuilder
         /// <param name="property">The property.</param>
         private void SetPropertyValue(PropertyInformation property)
         {
-            if (property == null) throw new ArgumentNullException(nameof(property));
+            if (property == null) throw new ArgumentNullException("property");
             var prop = mResult.GetType()
                 .GetProperty(property.PropertyName, BindingFlags.Public | BindingFlags.Instance);
             if (null != prop && prop.CanWrite)
@@ -169,7 +212,7 @@ namespace DynamicClassBuilder
         /// <returns></returns>
         private Type CompileResultType()
         {
-            AddProperties();
+            if(mTypeBuilder.BaseType!=null) AddProperties();
             Type objectType = mTypeBuilder.CreateType();
             return objectType;
         }
@@ -219,9 +262,11 @@ namespace DynamicClassBuilder
             foreach (var attrProp in attr.AttributeValues)
             {
 
-                types[i] = attrProp.Value.GetType();
+                
                 if (attr.AttributeType != null) attrPropertyInfos[i] = attr.AttributeType.GetProperty(attrProp.Key);
-                i++;
+                if (attrProp.Value != null) types[i] = attrProp.Value.GetType();
+                else types[i] = attrPropertyInfos[i].PropertyType;
+               i++;
             }
             if (caType == null)
             {
@@ -232,9 +277,19 @@ namespace DynamicClassBuilder
             }
             else
             {
-               
+                CustomAttributeBuilder stiAttrib;
                  con = caType.GetConstructor(types);
-                CustomAttributeBuilder stiAttrib = new CustomAttributeBuilder(con,attrValues);
+                if (con == null)
+                {
+                    con = caType.GetConstructor(new Type[0]);
+                     stiAttrib = new CustomAttributeBuilder(con, new object[0]);
+
+                }
+                else
+                {
+                     stiAttrib = new CustomAttributeBuilder(con, attrValues);
+                }
+                
                 propertyBuilder.SetCustomAttribute(stiAttrib);
             }
 

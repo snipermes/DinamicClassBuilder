@@ -33,7 +33,7 @@ namespace DynamicClassBuilder
             {
                 if (value.BaseType==null || value.BaseType.Name != "Attribute")
                 {
-                    throw new ArgumentException(@"Заданный тип не является атрибутом (не наследован от него)",nameof(AttributeType));
+                    throw new ArgumentException(@"Заданный тип не является атрибутом (не наследован от него)","AttributeType");
                 }
                 mAttributeType = value;
                 Name = mAttributeType.Name;

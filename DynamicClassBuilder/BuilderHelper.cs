@@ -2,6 +2,7 @@
 using System.CodeDom;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Dynamic;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
@@ -31,6 +32,7 @@ namespace DynamicClassBuilder
                     PropertyType = prop.PropertyType,
                     PropertyValue = prop.GetValue(obj, null),
                     CustomAttributes = GetCustomAttributes(prop)
+                    
                 };
                 dynProps.Add(dynProp);
             }
@@ -73,7 +75,7 @@ namespace DynamicClassBuilder
         public static void SetPropertyValue<T>(this T source, string propertyName, object value)
         {
             var prop= source.GetType().GetProperty(propertyName);
-            prop?.SetMethod.Invoke(source, new [] { value });
+            if (prop != null) prop.SetMethod.Invoke(source, new [] { value });
         }
 
         /// <summary>
@@ -117,7 +119,6 @@ namespace DynamicClassBuilder
                                 .First()).ToList();
             }
             return properties;
-            throw new ArgumentNullException(nameof(attributeName), @"Attribute or attribute property not found");
         }
         
     }
